@@ -46,12 +46,18 @@ global.distDir = path.join(global.workpath, '.fox');
 
 // get entry file
 if (fs.existsSync(global.packageJsonPath)) {
-  global.entryFilePath = fs.readFileSync(global.packageJsonPath);
+  const packageJson = require(global.packageJsonPath);
+  global.entryFilePath = packageJson.docEntry || packageJson.main;
+  if (!global.entryFilePath.startsWith('/')) {
+    global.entryFilePath = path.resolve(global.workpath, global.entryFilePath);
+  }
+} else {
+  // TODO: handle entry file
 }
 
 const CLASS_DECLARATION = 'ClassDeclaration';
 const FUNCTION_DECLARATION = 'FunctionDeclaration';
-// const VARIABLE_DECLARATION = 'VariableDeclaration';
+const VARIABLE_DECLARATION = 'VariableDeclaration';
 const VARIABLE_DECLARATOR = 'VariableDeclarator';
 
 const CALL_EXPRESSION = 'CallExpression';
@@ -87,6 +93,7 @@ if (DEBUG_TARGET_ENTRY) {
           exportProps: [],
         },
         commonExport: [],
+        reExportMap: new Map(),
       };
 
       const ast = babelParser.parse(value.toString(), global.babelParserOptions);
@@ -174,58 +181,104 @@ if (DEBUG_TARGET_ENTRY) {
 
         // common export handle
         // TODO: wait finish
-        if (ec.declaration) {
-          switch (ec.declaration.type) {
-            case 'ClassDeclaration':
-              exportInfo.commonExport.push({
-                exportType: 'class',
-                name: ec.declaration.id.name,
+        // if (ec.declaration) {
+        //   switch (ec.declaration.type) {
+        //     case 'ClassDeclaration':
+        //       exportInfo.commonExport.push({
+        //         exportType: 'class',
+        //         name: ec.declaration.id.name,
+        //       });
+        //       break;
+        //     case 'FunctionDeclaration':
+        //       exportInfo.commonExport.push({
+        //         exportType: 'function',
+        //         name: ec.declaration.id.name,
+        //       });
+        //       break;
+        //     case 'VariableDeclaration':
+        //       // variable handle
+        //       ec.declaration.declarations.forEach((ecn) => {
+        //         exportInfo.commonExport.push({
+        //           exportType: 'variable',
+        //           name: ecn.id.name,
+        //         });
+        //       });
+        //       break;
+        //     default:
+        //       throw new Error(`unknown export declaration\n${ec}`);
+        //   }
+        // } else {
+        //   switch (ec.type) {
+        //     case 'ClassDeclaration':
+        //       exportInfo.commonExport.push({
+        //         exportType: 'class',
+        //         name: ec.declaration.id.name,
+        //       });
+        //       break;
+        //     case 'VariableDeclaration':
+        //       // variable handle
+        //       ec.declaration.declarations.forEach((ecn) => {
+        //         exportInfo.commonExport.push({
+        //           exportType: 'variable',
+        //           name: ecn.declaration.id.name,
+        //         });
+        //       });
+        //       break;
+        //     default:
+        //       // ec.specifiers.forEach((p) => {
+        //       //   exportInfo.commonExport.push({
+        //       //     name: p.exported.name,
+        //       //   });
+        //       // });
+        //       throw new Error(`unknown export declaration\n${ec}`);
+        //   }
+        // }
+      });
+
+      traverse(ast, {
+        ExportNamedDeclaration({ node, parent }) {
+          // handle `export { xx as xx } from 'xx';`
+          if (!node.declaration) {
+            node.specifiers.forEach((sf) => {
+              exportInfo.reExportMap.set(sf.exported.name, {
+                sourceName: sf.local.name,
+                sourceFile: path.resolve(path.dirname(global.entryFilePath), node.source.value),
               });
-              break;
-            case 'FunctionDeclaration':
-              exportInfo.commonExport.push({
-                exportType: 'function',
-                name: ec.declaration.id.name,
-              });
-              break;
-            case 'VariableDeclaration':
-              // variable handle
-              ec.declaration.declarations.forEach((ecn) => {
+            });
+          } else {
+            switch (node.declaration.type) {
+              case CLASS_DECLARATION:
                 exportInfo.commonExport.push({
-                  exportType: 'variable',
-                  name: ecn.id.name,
+                  exportType: 'class',
+                  name: node.declaration.id.name,
                 });
-              });
-              break;
-            default:
-              throw new Error(`unknown export declaration\n${ec}`);
-          }
-        } else {
-          switch (ec.type) {
-            case 'ClassDeclaration':
-              exportInfo.commonExport.push({
-                exportType: 'class',
-                name: ec.declaration.id.name,
-              });
-              break;
-            case 'VariableDeclaration':
-              // variable handle
-              ec.declaration.declarations.forEach((ecn) => {
+                break;
+              case FUNCTION_DECLARATION:
                 exportInfo.commonExport.push({
-                  exportType: 'variable',
-                  name: ecn.declaration.id.name,
+                  exportType: 'function',
+                  name: node.declaration.id.name,
                 });
-              });
-              break;
-            default:
-              // ec.specifiers.forEach((p) => {
-              //   exportInfo.commonExport.push({
-              //     name: p.exported.name,
-              //   });
-              // });
-              throw new Error(`unknown export declaration\n${ec}`);
+                break;
+              case VARIABLE_DECLARATION:
+                node.declaration.declarations.forEach((ecn) => {
+                  if (ecn.declaration) {
+                    exportInfo.commonExport.push({
+                      exportType: 'variable',
+                      name: ecn.declaration.id.name,
+                    });
+                  } else {
+                    exportInfo.commonExport.push({
+                      exportType: ecn.init.type,
+                      name: ecn.id.name,
+                    });
+                  }
+                });
+                break;
+              default:
+                throw new Error(`unknow declaration\n ${node}`);
+            }
           }
-        }
+        },
       });
 
       console.log(description);
