@@ -461,7 +461,6 @@ async function docParser(
   const reExportEntries = Array.from(reExportMap.entries());
   if (reExportEntries.length > 0) {
     for (let i = 0; i < reExportEntries.length; i += 1) {
-      console.log('reExport parse');
       const targetSource = reExportEntries[i];
       const subDepImported = targetSource[1]; // store re exported info
       reExportMap.delete(targetSource[0]);
@@ -486,7 +485,6 @@ async function docParser(
         return null;
       });
       exportInfo.commonExport = exportInfo.commonExport.concat(reExportedCommonExport);
-      console.log(subDepExportInfo);
     }
   }
 
