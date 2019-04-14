@@ -40,3 +40,4 @@ node_modules
 
 # customized
 dist
+.fox
