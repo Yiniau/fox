@@ -4,57 +4,21 @@ const fs = require('fs');
 const babelParser = require('@babel/parser');
 const traverse = require('@babel/traverse').default;
 
-const depParser = require('../lib/parser/depParser/depParser');
+// const depParser = require('../lib/parser/depParser/depParser');
+const { babelParserOptions } = require('../lib/constants');
 const descriptionParser = require('../lib/parser/descriptionParser/parser');
 const typeAnnotationParser = require('../lib/parser/typeAnnotationParser');
 const mkdir = require('../tools/mkdir');
 
 const { log } = require('../tools/debug');
 
-const { DEBUG_TARGET_ENTRY } = process.env;
-
-
-log('DEBUG_TARGET_ENTRY', DEBUG_TARGET_ENTRY);
-
 // **** global var init ****
 // check https://babeljs.io/docs/en/next/babel-parser
-global.babelParserOptions = {
-  sourceType: 'module',
-  plugins: [
-    ['flow', { all: true }],
-    'jsx',
-    'flowComments',
-    'classProperties',
-    'classPrivateProperties',
-    'classPrivateMethods',
-    ['decorators', { decoratorsBeforeExport: true }],
-    // 'decorators-legacy',
-    'exportDefaultFrom',
-    'exportNamespaceFrom',
-    'objectRestSpread',
-    'optionalCatchBinding',
-    'optionalChaining',
-    'partialApplication',
-  ],
-};
 
 global.workpath = process.cwd();
 global.packageJsonPath = path.join(global.workpath, 'package.json');
-// global.entryPath = DEBUG_TARGET_ENTRY;
-// global.entryDir = path.dirname(DEBUG_TARGET_ENTRY);
 
 global.distDir = path.join(global.workpath, '.fox');
-
-// get entry file
-if (fs.existsSync(global.packageJsonPath)) {
-  const packageJson = require(global.packageJsonPath);
-  global.entryFilePath = packageJson.docEntry || packageJson.main;
-  if (!global.entryFilePath.startsWith('/')) {
-    global.entryFilePath = path.resolve(global.workpath, global.entryFilePath);
-  }
-} else {
-  // TODO: handle entry file
-}
 
 const IDENTIFIER = 'Identifier';
 
@@ -69,6 +33,9 @@ const CALL_EXPRESSION = 'CallExpression';
 const FUNCTION_EXPRESSION = 'FunctionExpression';
 const ARROW_FUNCTION_EXPRESSION = 'ArrowFunctionExpression';
 const CLASS_EXPRESSION = 'ClassExpression';
+
+const EXPORT_NAMED_DECLARATION = 'ExportNamedDeclaration';
+const EXPORT_DEFAULT_DECLARATION = 'ExportDefaultDeclaration';
 
 const INNER_LITERAL_MAP = {
   StringLiteral: 'string',
@@ -88,24 +55,59 @@ const INNER_TYPE_MAP = {
   NullLiteralTypeAnnotation: 'null',
 };
 
-const INNER_TYPE_ANNOTATION = {
-  StringTypeAnnotation: 'string',
-  NumberTypeAnnotation: 'number',
-  BooleanTypeAnnotation: 'boolean',
-};
-// *************************
+// doc json file operator
+// including some common operations
+class DocMataDataOperator {
+  constructor() {
+    mkdir(global.distDir, () => {
+      this.writeStream = fs.createWriteStream(
+        path.join(global.distDir, 'doc-mate-data.json'),
+        { flags: 'w+' },
+      );
+    });
+  }
+
+  write(content, cb = () => {}) {
+    this.writeStream.write(content, cb);
+  }
+
+  static leadingCommentParser(comment) {
+    if (typeof comment === 'string') {
+      return comment.replace(/^!\s*/, '\n');
+    }
+
+    if (comment.value) {
+      return comment.value.replace(/\*/gi, '');
+    }
+
+    return '';
+  }
+
+  static leadingCommentsHandle(leadingComments) {
+    let description = '';
+    if (leadingComments && leadingComments.length > 0) {
+      description = DocMataDataOperator.leadingCommentParser(
+        leadingComments
+          .filter(lc => lc.type === 'CommentBlock')
+          .pop(),
+      );
+    }
+    return description;
+  }
+}
 
 // function declaration's doc meta data module
 class FunctionDeclaration {
   constructor(node) {
     this.type = 'function';
-    if (!node.id) {
-      console.log();
-    }
+
     this.name = 'unknown';
     if (node.id && node.id.name) {
       this.name = node.id.name;
     }
+
+    this.description = DocMataDataOperator.leadingCommentsHandle(node.leadingComments);
+
 
     this.paramsHandle(node);
 
@@ -145,7 +147,9 @@ class ArrayExpression {
       throw new Error('type annotation info missed');
     }
 
-    this.type = ARRAY_EXPRESSION;
+    this.type = 'array';
+
+    this.description = DocMataDataOperator.leadingCommentsHandle(node.leadingComments);
   }
 }
 
@@ -158,6 +162,8 @@ class ObjectExpression {
       this.name = node.id.name;
     }
 
+    this.description = DocMataDataOperator.leadingCommentsHandle(node.leadingComments);
+
     if (!node.id.typeAnnotation || !node.id.typeAnnotation.typeAnnotation) {
       throw new Error('type annotation info missed');
     }
@@ -165,7 +171,6 @@ class ObjectExpression {
   }
 }
 
-// class declaration's doc meta data module
 class ClassDeclaration {
   constructor(node) {
     this.type = 'class';
@@ -175,6 +180,8 @@ class ClassDeclaration {
     }
     this.name = node.id.name;
     this.superClass = node.superClass;
+
+    this.description = DocMataDataOperator.leadingCommentsHandle(node.leadingComments);
 
     const classBody = node.body;
 
@@ -193,6 +200,7 @@ class ClassDeclaration {
               || n.value.type === FUNCTION_EXPRESSION
             ) {
               this.classMethodHandle({
+                ...n, // pass necessary properties like `static`, `leadingComments`, and more.
                 ...n.value,
                 name: n.key.name,
               });
@@ -250,40 +258,6 @@ class ClassDeclaration {
   }
 }
 
-
-// doc json file operator
-// including some common operations
-class DocMataDataOperator {
-  constructor() {
-    mkdir(global.distDir, () => {
-      this.writeStream = fs.createWriteStream(
-        path.join(global.distDir, 'doc-mate-data.json'),
-        { flags: 'w+' },
-      );
-    });
-  }
-
-  write(content, cb = () => {}) {
-    this.writeStream.write(content, cb);
-  }
-}
-
-const dmdo = new DocMataDataOperator();
-
-if (DEBUG_TARGET_ENTRY) {
-  try {
-    docParser(DEBUG_TARGET_ENTRY).then((docInfo) => {
-      console.log(docInfo);
-    });
-
-    // depParser.parse(DEBUG_TARGET_ENTRY).then((value) => {
-    //   console.log(value);
-    // });
-  } catch (e) {
-    throw e;
-  }
-}
-
 async function docParser(
   entry,
   reExportMap = new Map(),
@@ -298,39 +272,96 @@ async function docParser(
     commonExport: [],
   };
 
-  const ast = babelParser.parse(fileContent.toString(), global.babelParserOptions);
+  const ast = babelParser.parse(fileContent.toString(), babelParserOptions);
   exportInfo.description = descriptionParser(ast.comments);
 
   // collect global declaration first
   const globalDeclarationCollection = new Map();
 
   const declarationHandleMap = {
-    [OBJECT_EXPRESSION]: ({ node }) => {
+    [OBJECT_EXPRESSION]: ({ node, parent }) => {
+      if (
+        parent.leadingComments
+        && (
+          parent.type === EXPORT_NAMED_DECLARATION
+          || parent.type === EXPORT_DEFAULT_DECLARATION
+        )
+      ) {
+        if (parent.leadingComments.length) {
+          node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
+        }
+      }
       globalDeclarationCollection.set(
         node.id.name,
         new ObjectExpression(node),
       );
     },
-    [ARRAY_EXPRESSION]: ({ node }) => {
+    [ARRAY_EXPRESSION]: ({ node, parent }) => {
+      if (
+        parent.leadingComments
+        && (
+          parent.type === EXPORT_NAMED_DECLARATION
+          || parent.type === EXPORT_DEFAULT_DECLARATION
+        )
+      ) {
+        if (parent.leadingComments.length) {
+          node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
+        }
+      }
       globalDeclarationCollection.set(
         node.id.name,
         new ArrayExpression(node),
       );
     }, // TODO: declaration handle map :: ARRAY_EXPRESSION
-    [CLASS_DECLARATION]: ({ node }) => {
+    [CLASS_DECLARATION]: ({ node, parent }) => {
+      if (
+        parent.leadingComments
+        && (
+          parent.type === EXPORT_NAMED_DECLARATION
+          || parent.type === EXPORT_DEFAULT_DECLARATION
+        )
+      ) {
+        if (parent.leadingComments.length) {
+          node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
+        }
+      }
       globalDeclarationCollection.set(
         node.id.name,
         new ClassDeclaration(node),
       );
     },
-    [FUNCTION_DECLARATION]: ({ node }) => {
+    [FUNCTION_DECLARATION]: ({ node, parent }) => {
+      if (
+        parent.leadingComments
+        && (
+          parent.type === EXPORT_NAMED_DECLARATION
+          || parent.type === EXPORT_DEFAULT_DECLARATION
+        )
+      ) {
+        if (parent.leadingComments.length) {
+          node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
+        }
+      }
       globalDeclarationCollection.set(
         node.id.name,
         new FunctionDeclaration(node),
       );
     },
     [VARIABLE_DECLARATOR]: (t) => {
-      const { node } = t;
+      const { node, parent } = t;
+
+      if (
+        parent.leadingComments
+        && (
+          parent.type === EXPORT_NAMED_DECLARATION
+          || parent.type === EXPORT_DEFAULT_DECLARATION
+          || parent.type === VARIABLE_DECLARATION
+        )
+      ) {
+        if (parent.leadingComments.length) {
+          node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
+        }
+      }
 
       if (Object.keys(INNER_TYPE_MAP).includes(node.init.type)) {
         const nodeInfo = {};
@@ -418,10 +449,15 @@ async function docParser(
           throw new Error(`unknown export declaration\n${node}`);
       }
     },
-    ExportNamedDeclaration({ node }) {
+    ExportNamedDeclaration({ node, parent }) {
       // handle `export { xx as xx } from 'xx';`
+
+      if (parent) {
+
+      }
+
       if (!node.declaration) {
-        let sourceFilePath = path.resolve(path.dirname(global.entryFilePath), node.source.value);
+        let sourceFilePath = path.resolve(path.dirname(entry), node.source.value);
         if (!/\.(js|jsx)$/.test(sourceFilePath)) {
           sourceFilePath += '.js';
         }
@@ -484,13 +520,19 @@ async function docParser(
         }
         return null;
       });
+
+      // combo export
       exportInfo.commonExport = exportInfo.commonExport.concat(reExportedCommonExport);
     }
   }
 
+  // whitelist filtering
   if (whiteList.length > 0) {
     exportInfo.commonExport = exportInfo.commonExport.filter(c => whiteList.includes(c.name));
   }
 
   return exportInfo;
 }
+
+module.exports.DocMataDataOperator = DocMataDataOperator;
+module.exports.docParser = docParser;
