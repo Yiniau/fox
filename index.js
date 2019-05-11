@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { cwd, defaultEntryFilePath } = require('./lib/constants');
+const packageInfoParser = require('./lib/parser/packageInfoParser.js');
 const { docParser, DocMataDataOperator } = require('./src/index.js');
 // const cliLauncher = require('./tools/cli');
 
@@ -55,7 +56,9 @@ if (!entryFilePath || entryFilePath === '') {
   }
 
   docParser(entryFilePath).then((res) => {
-    console.log(res);
-    dmdo.write(JSON.stringify(res, (k, v) => v, 4));
+    dmdo.write(JSON.stringify({
+      ...packageInfoParser(cwd),
+      ...res,
+    }, (k, v) => v, 4));
   });
 }

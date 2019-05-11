@@ -77,7 +77,7 @@ class DocMataDataOperator {
     }
 
     if (comment.value) {
-      return comment.value.replace(/\*/gi, '');
+      return comment.value.replace(/\*(?=\s)/gi, '').slice(1);
     }
 
     return '';
@@ -105,9 +105,11 @@ class FunctionDeclaration {
     if (node.id && node.id.name) {
       this.name = node.id.name;
     }
+    if (node.key && node.key.name) {
+      this.name = node.key.name;
+    }
 
     this.description = DocMataDataOperator.leadingCommentsHandle(node.leadingComments);
-
 
     this.paramsHandle(node);
 
@@ -226,7 +228,7 @@ class ClassDeclaration {
 
     targetMethodGroup.push({
       ...new FunctionDeclaration(node),
-      name: node.name,
+      name: node.key.name,
     });
   }
 
@@ -350,6 +352,8 @@ async function docParser(
     [VARIABLE_DECLARATOR]: (t) => {
       const { node, parent } = t;
 
+      // while parsing variable declarations,
+      // the scope of detecting leadingComments should be increasing
       if (
         parent.leadingComments
         && (
@@ -451,11 +455,6 @@ async function docParser(
     },
     ExportNamedDeclaration({ node, parent }) {
       // handle `export { xx as xx } from 'xx';`
-
-      if (parent) {
-
-      }
-
       if (!node.declaration) {
         let sourceFilePath = path.resolve(path.dirname(entry), node.source.value);
         if (!/\.(js|jsx)$/.test(sourceFilePath)) {

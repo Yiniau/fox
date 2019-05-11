@@ -74,3 +74,4 @@ typings/
 # customized
 js-ast.json
 dist
+demo
