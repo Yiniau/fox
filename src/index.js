@@ -283,15 +283,12 @@ async function docParser(
   const declarationHandleMap = {
     [OBJECT_EXPRESSION]: ({ node, parent }) => {
       if (
-        parent.leadingComments
-        && (
+        parent.leadingComments && (
           parent.type === EXPORT_NAMED_DECLARATION
           || parent.type === EXPORT_DEFAULT_DECLARATION
-        )
+        ) && parent.leadingComments.length
       ) {
-        if (parent.leadingComments.length) {
-          node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
-        }
+        node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
       }
       globalDeclarationCollection.set(
         node.id.name,
@@ -300,15 +297,12 @@ async function docParser(
     },
     [ARRAY_EXPRESSION]: ({ node, parent }) => {
       if (
-        parent.leadingComments
-        && (
+        parent.leadingComments && (
           parent.type === EXPORT_NAMED_DECLARATION
           || parent.type === EXPORT_DEFAULT_DECLARATION
-        )
+        ) && parent.leadingComments.length
       ) {
-        if (parent.leadingComments.length) {
-          node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
-        }
+        node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
       }
       globalDeclarationCollection.set(
         node.id.name,
@@ -317,15 +311,12 @@ async function docParser(
     }, // TODO: declaration handle map :: ARRAY_EXPRESSION
     [CLASS_DECLARATION]: ({ node, parent }) => {
       if (
-        parent.leadingComments
-        && (
+        parent.leadingComments && (
           parent.type === EXPORT_NAMED_DECLARATION
           || parent.type === EXPORT_DEFAULT_DECLARATION
-        )
+        ) && parent.leadingComments.length
       ) {
-        if (parent.leadingComments.length) {
-          node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
-        }
+        node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
       }
       globalDeclarationCollection.set(
         node.id.name,
@@ -334,15 +325,12 @@ async function docParser(
     },
     [FUNCTION_DECLARATION]: ({ node, parent }) => {
       if (
-        parent.leadingComments
-        && (
+        parent.leadingComments && (
           parent.type === EXPORT_NAMED_DECLARATION
           || parent.type === EXPORT_DEFAULT_DECLARATION
-        )
+        ) && parent.leadingComments.length
       ) {
-        if (parent.leadingComments.length) {
-          node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
-        }
+        node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
       }
       globalDeclarationCollection.set(
         node.id.name,
@@ -355,16 +343,13 @@ async function docParser(
       // while parsing variable declarations,
       // the scope of detecting leadingComments should be increasing
       if (
-        parent.leadingComments
-        && (
+        parent.leadingComments && (
           parent.type === EXPORT_NAMED_DECLARATION
           || parent.type === EXPORT_DEFAULT_DECLARATION
           || parent.type === VARIABLE_DECLARATION
-        )
+        ) && parent.leadingComments.length
       ) {
-        if (parent.leadingComments.length) {
-          node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
-        }
+        node.leadingComments = parent.leadingComments.concat(node.leadingComments || []);
       }
 
       if (Object.keys(INNER_TYPE_MAP).includes(node.init.type)) {
@@ -432,7 +417,7 @@ async function docParser(
         throw new Error('cannot find default export declaration info');
       }
       switch (node.declaration.type) {
-        case 'ObjectExpression':
+        case OBJECT_EXPRESSION:
           // TODO: object declaration handle
           exportInfo.defaultInfo.exportType = 'object';
           exportInfo.defaultInfo.exportProps = [];
@@ -464,12 +449,13 @@ async function docParser(
           if (!reExportMap.has(sourceFilePath)) {
             reExportMap.set(sourceFilePath, []);
           }
-          const currentSourceExportedArr = reExportMap.get(sourceFilePath);
-          currentSourceExportedArr.push({
-            sourceName: sf.local.name,
-            sourceFilePath,
-            exportedName: sf.exported.name,
-          });
+          reExportMap
+            .get(sourceFilePath)
+            .push({
+              sourceName: sf.local.name,
+              sourceFilePath,
+              exportedName: sf.exported.name,
+            });
         });
       } else {
         switch (node.declaration.type) {
@@ -487,7 +473,7 @@ async function docParser(
             });
             break;
           default:
-            throw new Error(`unknow declaration\n ${node}`);
+            throw new Error(`unknown declaration\n ${node}`);
         }
       }
     },

@@ -26,7 +26,7 @@ const { DEBUG_TARGET_ENTRY } = process.env;
 
 
 const usageInfo = `
-just cd into your target project, then press fox will be fine.
+just cd into your target project, then press \`fox\`.
 `;
 
 program
